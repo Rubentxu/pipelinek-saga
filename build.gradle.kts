@@ -48,15 +48,22 @@ dependencies {
     // at runtime. A plugin that bundled the contracts could run beside a second copy of
     // them, which is exactly the two-authorities split the published seam exists to prevent.
     //
-    // ONLY `pipeline-domain` is on this list, and that is the point of PG-0: the Saga
-    // contract is IN the published domain contract, so an external consumer needs nothing
-    // else. If a future milestone needs another published module, it adds it here.
+    // `pipeline-domain` is on this list because of PG-0: the Saga contract is IN the
+    // published domain contract, so an external consumer needs nothing else to PLEDGE, to
+    // ASK and to COMPENSATE.
+    //
+    // `pipeline-events` joined it when the Saga's own facts became events (0.68.0). A
+    // consumer that wants to read what a compensation loop DID — which bodies ran, how they
+    // ended, and whether a human is needed — reads the event plane, and that plane is a
+    // published module. It is still a SEAM and not a fork: two published artifacts, and
+    // nothing internal.
     //
     // Nothing else is declared, and that is a decision rather than an omission: the Saga
     // contract is plain data with no serialization of its own, because the ENGINE owns the
     // durable form of an obligation. A consumer that brought its own JSON layer, or pinned
     // its own version of one, would be duplicating an authority that is not its.
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
+    compileOnly("dev.rubentxu.pipeline.v2:pipeline-events:$sdkVersion")
 }
 
 kotlin {

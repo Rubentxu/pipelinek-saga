@@ -27,9 +27,9 @@ bundle as an asset (`pipelinek-<train>.sdk.zip`); download it from the release, 
 point the build at the directory:
 
 ```bash
-gh release download v0.67.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.67.0.sdk.zip' -D /tmp/sdkdl
-unzip pipelinek-0.67.0.sdk.zip -d /tmp/sdk
-./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.67.0
+gh release download v0.68.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.68.0.sdk.zip' -D /tmp/sdkdl
+unzip pipelinek-0.68.0.sdk.zip -d /tmp/sdk
+./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.68.0
 ```
 
 The version is always explicit. A default could only be one that fails to resolve, and that
@@ -39,7 +39,7 @@ failure arrives far from the line that matters.
 
 | Milestone | What | State |
 |---|---|---|
-| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike` and `SagaRefusalSpike` compile against the published SDK of `v0.67.0-rc1` |
+| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.68.0-rc1` |
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
@@ -50,14 +50,17 @@ published, and the answer it found is yes — the whole Saga contract is inside 
 
 ### What PG-0 actually proved
 
-- **Producer**: PipelineK `v0.67.0-rc1` (tag commit `0ef9d7485f096f90d0975d868ccf3c934eff60dd`,
-  release candidate `sha256:fb81f03fd67372d62254a868d776affd997bd7591adb9305023ee6bc0d4e9527`).
-- **Artifact consumed**: `pipelinek-0.67.0.sdk.zip`, sha256
-  `6b9f18e672b318f1db0a5b332fe96a90b853648058ccf675d9824bcb501dff71`, verified against the
+- **Producer**: PipelineK `v0.68.0-rc1` (tag commit `347faf941f5f116c46df8115a9747d7da68b396b`,
+  release candidate `sha256:43c39a23447fbc5fa1d055eaf89be5f9bc1c41555f6b3fb5a55a52d96ef630a1`).
+- **Artifact consumed**: `pipelinek-0.68.0.sdk.zip`, sha256
+  `ced40f0a7fabfa5b23d8b7efa5987e12f2469b8c5f2e43618c78fbc8ffec52a5`, verified against the
   release's `SHA256SUMS`.
-- **Resolved classpath**: exactly one PipelineK artifact — `pipeline-domain:0.67.0`. Everything
-  else on the classpath is the Kotlin standard library and the JSON layer the producer itself
-  declares as `api`. Nothing internal is reachable, because nothing internal is published.
+- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.68.0` and
+  `pipeline-events:0.68.0` (which brings `pipeline-scripting-api:0.68.0` with it). Everything
+  else on the classpath is the Kotlin standard library. Nothing internal is reachable, because
+  nothing internal is published. The second artifact is not a widening of the seam: the domain
+  carries the CONTRACT and the events carry the OBSERVABLE FACTS of it, and a consumer that
+  wants to read what a compensation loop did needs both.
 - **The spike is a real probe**: its first compile **failed** with an unresolved reference
   (`CompensationId`). That failure is the point of doing the spike with a compiler instead of
   with an opinion — and it found a gap in the consumer, not in the contract.
@@ -71,6 +74,13 @@ published, and the answer it found is yes — the whole Saga contract is inside 
   **not dispatched** left the resource untouched and may be retried, while one whose outcome is
   **uncertain** may already have been applied and must not be run again. A consumer that cannot
   tell them apart either undoes a resource twice or leaves the Saga stuck forever.
+- **The fifth probe reads the event plane**: `SagaEventSpike.kt` compiles against `0.68.0` and
+  **fails** against `0.67.0` with unresolved references to `CompensationStarted`,
+  `CompensationFinished` and `SagaTerminal`. It answers the question a consumer of a FINISHED
+  run really has — which bodies ran, how they ended, and whether a human is needed — from the
+  events, without opening SQLite and without knowing anything about the engine's internals. A
+  Saga that is only observable in a private table is a Saga that is only observable by the
+  engine.
 
 The first milestone that changes behaviour is PG-1, and it is blocked on the Core: the
 compensation must be executed and its evidence persisted before a plugin can promise
@@ -106,6 +116,11 @@ there. The published vocabulary grows with exactly one word for that fact,
 `InterventionReason.COMPENSATION_NOT_DISPATCHED`, next to the `COMPENSATION_UNCERTAIN` that
 names the case where something ran and nobody knows what it did. Two words, two different
 answers to the only question that matters after a failure: may I try again?
+
+`v0.68.0-rc1` makes the Saga OBSERVABLE from outside: the compensation loop announces what it
+does — a compensation started, a compensation finished, the Saga's terminal state — and the
+announcements are published events. The engine still owns the state and still produces every
+fact; the consumer only reads them.
 
 Two things it still does **not** bring, and that is why PG-1 is still blocked:
 
