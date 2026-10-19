@@ -27,9 +27,9 @@ bundle as an asset (`pipelinek-<train>.sdk.zip`); download it from the release, 
 point the build at the directory:
 
 ```bash
-gh release download v0.64.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.64.0.sdk.zip' -D /tmp/sdkdl
-unzip pipelinek-0.64.0.sdk.zip -d /tmp/sdk
-./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.64.0
+gh release download v0.65.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.65.0.sdk.zip' -D /tmp/sdkdl
+unzip pipelinek-0.65.0.sdk.zip -d /tmp/sdk
+./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.65.0
 ```
 
 The version is always explicit. A default could only be one that fails to resolve, and that
@@ -39,7 +39,7 @@ failure arrives far from the line that matters.
 
 | Milestone | What | State |
 |---|---|---|
-| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `src/main/kotlin/dev/rubentxu/pipeline/v2/saga/spike/SagaContractSpike.kt` compiles against the published SDK of `v0.64.0-rc1` |
+| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `src/main/kotlin/dev/rubentxu/pipeline/v2/saga/spike/SagaContractSpike.kt` and `SagaPlanSpike.kt` compile against the published SDK of `v0.65.0-rc1` |
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
@@ -50,16 +50,21 @@ published, and the answer it found is yes — the whole Saga contract is inside 
 
 ### What PG-0 actually proved
 
-- **Producer**: PipelineK `v0.64.0-rc1` (tag commit `1f8ac46e6521285a7d0d3c40630abf4bd9d811b6`).
-- **Artifact consumed**: `pipelinek-0.64.0.sdk.zip`, sha256
-  `8e47665d15fec55df3faa0d5e9318005f10c40723302d0dfe3dbbea7a5ea8276`, verified against the
+- **Producer**: PipelineK `v0.65.0-rc1` (tag commit `5c318772cde9bc1e4ef6360407bf06633102c3f4`,
+  release candidate `sha256:907e725ab432cd3f94777f6ffefa221b9e61887655ed5e7f3e0486d91a9293e6`).
+- **Artifact consumed**: `pipelinek-0.65.0.sdk.zip`, sha256
+  `2322dcf723bf8292ade1a9657ae5c7d7cfba45e5f3a7f77711bbcb764647e2e1`, verified against the
   release's `SHA256SUMS`.
-- **Resolved classpath**: exactly one PipelineK artifact — `pipeline-domain:0.64.0`. Everything
+- **Resolved classpath**: exactly one PipelineK artifact — `pipeline-domain:0.65.0`. Everything
   else on the classpath is the Kotlin standard library and the JSON layer the producer itself
   declares as `api`. Nothing internal is reachable, because nothing internal is published.
 - **The spike is a real probe**: its first compile **failed** with an unresolved reference
   (`CompensationId`). That failure is the point of doing the spike with a compiler instead of
   with an opinion — and it found a gap in the consumer, not in the contract.
+- **The second probe is real too**: `SagaPlanSpike.kt` compiles against `0.65.0` and **fails**
+  against `0.64.0` with unresolved references to `SagaPlanOperations`, `SAGA_PLAN_CAPABILITY`,
+  `CompensationDirective`, `CompensationObservation` and `SagaRecordOutcome`. A probe that
+  compiled against everything would prove nothing about the contract it claims to use.
 
 The first milestone that changes behaviour is PG-1, and it is blocked on the Core: the
 compensation must be executed and its evidence persisted before a plugin can promise
@@ -67,18 +72,26 @@ something that the engine will honour.
 
 ### What the new SDK brought (and what it did not)
 
-`v0.64.0-rc1` adds the **slot seam** to the published contract: `BodySlotInvoker`, the port
-that lets a handler run **one** named child of its own body instead of the whole body.
+`v0.64.0-rc1` added the **slot seam** to the published contract: `BodySlotInvoker`, the port
+that lets a handler run **one** named child of its own body instead of the whole body. That is
+the piece a Saga needs to choose between a *forward* body and a *compensate* body.
 
-That is the piece a Saga needs and did not have. Until now, a plugin could only run its body
-WHOLE, so it could not choose between a *forward* body and a *compensate* body — which is
-exactly the choice a Saga has to make. The seam is now published, and it is demonstrated by an
-external plugin in the producer's own examples.
+`v0.65.0-rc1` adds the **plan seam**: `SagaPlanOperations` (with the `saga.plan` capability),
+the durable obligation states a Saga passes through (`EFFECT_PENDING`, `EFFECT_UNKNOWN`,
+`COMPENSATION_PENDING`, `COMPENSATION_FAILED`, `COMPENSATION_UNCERTAIN`), the pure decision
+`SagaDecider.nextCompensation(snapshot, policy)` and the lifecycle table
+`CompensationLifecycle` that says which state may follow which.
 
-Two things it does **not** bring, and that is why PG-1 is still blocked:
+What it means for a consumer is concrete: a plugin can now declare that a call is about to
+leave the process, report what it turned out to be, and ask what the Saga owes — and the
+answer is the SAME one the engine would give, because it is derived from the durable state and
+from a published function, not from a copy of the rule living in the plugin.
 
-- The Core does not yet **interpret** a Saga: there is no LIFO ordering of compensations, no
-  persisted evidence of a compensation, and no reconciliation after a crash.
+Two things it still does **not** bring, and that is why PG-1 is still blocked:
+
+- The Core does not yet **execute** a Saga's compensation: the decision and the durable
+  lifecycle exist, but nothing yet dispatches the compensation body through the same
+  dispatcher, and the crash windows are not reconciled yet.
 - A slot is addressed by the plugin step key of the child, so two children of the **same** kind
   collide and the seam refuses the ambiguous name instead of guessing. A Saga plugin that wants
   two bodies of its own kind declares two definitions.
