@@ -27,9 +27,9 @@ bundle as an asset (`pipelinek-<train>.sdk.zip`); download it from the release, 
 point the build at the directory:
 
 ```bash
-gh release download v0.66.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.66.0.sdk.zip' -D /tmp/sdkdl
-unzip pipelinek-0.66.0.sdk.zip -d /tmp/sdk
-./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.66.0
+gh release download v0.67.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.67.0.sdk.zip' -D /tmp/sdkdl
+unzip pipelinek-0.67.0.sdk.zip -d /tmp/sdk
+./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.67.0
 ```
 
 The version is always explicit. A default could only be one that fails to resolve, and that
@@ -39,7 +39,7 @@ failure arrives far from the line that matters.
 
 | Milestone | What | State |
 |---|---|---|
-| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike` and `SagaRuntimeSpike` compile against the published SDK of `v0.66.0-rc1` |
+| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike` and `SagaRefusalSpike` compile against the published SDK of `v0.67.0-rc1` |
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
@@ -50,12 +50,12 @@ published, and the answer it found is yes — the whole Saga contract is inside 
 
 ### What PG-0 actually proved
 
-- **Producer**: PipelineK `v0.66.0-rc1` (tag commit `3778e3adae3a8155438ecbd944a028f9350a58b3`,
-  release candidate `sha256:709fb3dd385f6b45fc9b92d1e29d0f01c142015d6288c9f27064e59a59cff0d3`).
-- **Artifact consumed**: `pipelinek-0.66.0.sdk.zip`, sha256
-  `13b26174babbb6c4f44b3047fcc3fa4214cf825bd94c23e116badc8279ad2d89`, verified against the
+- **Producer**: PipelineK `v0.67.0-rc1` (tag commit `0ef9d7485f096f90d0975d868ccf3c934eff60dd`,
+  release candidate `sha256:fb81f03fd67372d62254a868d776affd997bd7591adb9305023ee6bc0d4e9527`).
+- **Artifact consumed**: `pipelinek-0.67.0.sdk.zip`, sha256
+  `6b9f18e672b318f1db0a5b332fe96a90b853648058ccf675d9824bcb501dff71`, verified against the
   release's `SHA256SUMS`.
-- **Resolved classpath**: exactly one PipelineK artifact — `pipeline-domain:0.66.0`. Everything
+- **Resolved classpath**: exactly one PipelineK artifact — `pipeline-domain:0.67.0`. Everything
   else on the classpath is the Kotlin standard library and the JSON layer the producer itself
   declares as `api`. Nothing internal is reachable, because nothing internal is published.
 - **The spike is a real probe**: its first compile **failed** with an unresolved reference
@@ -65,6 +65,12 @@ published, and the answer it found is yes — the whole Saga contract is inside 
   against `0.65.0` with unresolved references to `SagaRuntime`, `SagaPlan`, `SagaActionPlan`,
   `SagaCompensationReport` and `SAGA_RUNTIME_CAPABILITY`. A probe that compiled against
   everything would prove nothing about the contract it claims to use.
+- **The fourth probe is a probe about refusals**: `SagaRefusalSpike.kt` compiles against `0.67.0`
+  and **fails** against `0.66.0` with `Unresolved reference 'COMPENSATION_NOT_DISPATCHED'`. It
+  exists because the two refusals a Saga can hit are not interchangeable: a compensation that was
+  **not dispatched** left the resource untouched and may be retried, while one whose outcome is
+  **uncertain** may already have been applied and must not be run again. A consumer that cannot
+  tell them apart either undoes a resource twice or leaves the Saga stuck forever.
 
 The first milestone that changes behaviour is PG-1, and it is blocked on the Core: the
 compensation must be executed and its evidence persisted before a plugin can promise
@@ -92,6 +98,14 @@ What it means for a consumer is concrete: a plugin can now hand over its plan an
 ENGINE run the compensation loop, and the answer is the SAME one the engine would give,
 because it is derived from the durable state and from a published function, not from a copy of
 the rule living in the plugin.
+
+`v0.67.0-rc1` is a smaller train, and it is the smallest useful one: the engine's compensation
+loop now **obeys** the durable state instead of asking it and discarding the answer. A refusal
+means the compensation was NOT dispatched — the resource was not touched — and the Saga stops
+there. The published vocabulary grows with exactly one word for that fact,
+`InterventionReason.COMPENSATION_NOT_DISPATCHED`, next to the `COMPENSATION_UNCERTAIN` that
+names the case where something ran and nobody knows what it did. Two words, two different
+answers to the only question that matters after a failure: may I try again?
 
 Two things it still does **not** bring, and that is why PG-1 is still blocked:
 
