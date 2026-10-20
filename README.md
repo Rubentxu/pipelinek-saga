@@ -27,9 +27,9 @@ bundle as an asset (`pipelinek-<train>.sdk.zip`); download it from the release, 
 point the build at the directory:
 
 ```bash
-gh release download v0.73.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.73.0.sdk.zip' -D /tmp/sdkdl
-unzip pipelinek-0.73.0.sdk.zip -d /tmp/sdk
-./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.73.0
+gh release download v0.74.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.74.0.sdk.zip' -D /tmp/sdkdl
+unzip pipelinek-0.74.0.sdk.zip -d /tmp/sdk
+./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.74.0
 ```
 
 The version is always explicit. A default could only be one that fails to resolve, and that
@@ -39,7 +39,7 @@ failure arrives far from the line that matters.
 
 | Milestone | What | State |
 |---|---|---|
-| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.73.0-rc1` |
+| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike`, `SagaEventSpike` and `SagaVerdictSpike` compile against the published SDK of `v0.74.0-rc1` |
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
@@ -50,13 +50,13 @@ published, and the answer it found is yes — the whole Saga contract is inside 
 
 ### What PG-0 actually proved
 
-- **Producer**: PipelineK `v0.73.0-rc1` (tag commit `43855cb751feeb9dcd4c6f4cea735c9370fe7009`,
-  release candidate `sha256:ac3ea176f83be106bca7f376fdf2a1e7e71e24b6a293d7689c601240cd0b5582`).
-- **Artifact consumed**: `pipelinek-0.73.0.sdk.zip`, sha256
-  `29a99c1b780eeb32a21a64da79838b000eb67ec321141b8be4f91a6e898b1eca`, verified against the
+- **Producer**: PipelineK `v0.74.0-rc1` (tag commit `cf3a465c213115b65d6e25960bcd98d471b640cf`,
+  release candidate `sha256:f74c9fb3ed8e0a73a43a036eaef0f0345a71b6aaacdcde89df84e63e6ddeaccd`).
+- **Artifact consumed**: `pipelinek-0.74.0.sdk.zip`, sha256
+  `81c1e6fd1ce3ce6e8c642dd4958510c28417a9c9459f79d83e7ccb4869d483a5`, verified against the
   release's `SHA256SUMS`.
-- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.73.0` and
-  `pipeline-events:0.73.0` (which brings `pipeline-scripting-api:0.73.0` with it). Everything
+- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.74.0` and
+  `pipeline-events:0.74.0` (which brings `pipeline-scripting-api:0.74.0` with it). Everything
   else on the classpath is the Kotlin standard library. Nothing internal is reachable, because
   nothing internal is published. The second artifact is not a widening of the seam: the domain
   carries the CONTRACT and the events carry the OBSERVABLE FACTS of it, and a consumer that
@@ -81,6 +81,17 @@ published, and the answer it found is yes — the whole Saga contract is inside 
   ended, and whether a human is needed — from the events, without opening SQLite and without
   knowing anything about the engine's internals. A Saga that is only observable in a private table
   is a Saga that is only observable by the engine.
+- **The sixth probe reads the VERDICT, and it does not correlate anything**: `SagaVerdictSpike.kt`
+  compiles against `0.74.0` and **fails** against `0.73.0` with unresolved references to
+  `RunPresentationProjection`, `RunPresentation` and `SagaOutcome` — re-verified in this cycle.
+  The fifth probe read the plane by hand, filtering `SagaTerminal` and reading its state word; this
+  one asks the SDK for the whole answer — how the run went, what each Saga left behind, whether a
+  human has work — in **one typed fact**. The difference is not stylistic: the fifth probe had to
+  decide for itself what the absence of a terminal means, and every consumer would have had to
+  decide it again, and could have decided it differently.
+  The reading itself is proven in the producer, not here: its tests read the **real bytes** of two
+  finished runs, captured from the durable store, and assert that the verdict they produce is the
+  same one the product prints on stderr.
 
 The first milestone that changes behaviour is PG-1, and it is blocked on the Core: the
 compensation must be executed and its evidence persisted before a plugin can promise
@@ -180,6 +191,23 @@ depends on — the *contract* moves at its own pace, while the *product* around 
   moves. For a consumer the shape is the same; the guarantee is stronger, because a lost answer
   can now be settled by **asking** instead of only by a human.
 
+- `v0.74.0-rc1` publishes the **shape of the verdict** — the thing this repository was waiting for
+  since the 3b-2. Until now the run's fate and the Saga's fate were two facts in two places: the
+  word on the plane (`RunFinished`) and the terminal event (`SagaTerminal`), and a consumer that
+  wanted to answer "did it fail, and is there work for a human?" had to correlate them by hand and
+  to decide for itself what the absence of each one means. From this train the SDK answers it
+  **once** and publishes the answer: `RunPresentationProjection` reads the plane and returns a
+  typed `RunPresentation` — the run's outcome with its typed failure, what each Saga left behind
+  with the reason when a human is needed, and whether the run's story is over. It fails closed, on
+  purpose: no closing event reads as `Aborted` rather than as success, a word this build does not
+  know reads as a failure rather than as a good run, and a Saga whose terminal cannot be read is
+  never read as settled — including a Saga that armed an obligation and never said how it ended.
+  The published contract grows additively: the verdict's ontology (`SagaOutcome`,
+  `RunPresentation`, `mergeCompensationOutcome`), the vocabulary of the outcome
+  (`RunOutcome.wireToken`) and the projection itself. The **event schema does not move**: the
+  verdict is read from the facts already on the plane, not from a new field.
+  For a consumer this is the difference between reading two events and reading one fact.
+
 One thing it still does **not** bring, and that is why PG-1 is still blocked:
 
 - A slot is addressed by the plugin step key of the child, so two children of the **same** kind
@@ -187,15 +215,15 @@ One thing it still does **not** bring, and that is why PG-1 is still blocked:
   two bodies of its own kind declares two definitions. The shipped example needed six distinct
   kinds for a three-action chain, which is a property of the seam and not of the Saga — a real
   consumer should not have to borrow the core's kinds to get there.
+- And one that the Core has just discovered about **itself**: the Saga contract cannot express a
+  Saga that **succeeded**. The engine has one verb to close a Saga — `compensate` — and an
+  obligation whose forward was confirmed stays owed forever, so a Saga whose actions all succeeded
+  compensates itself. Measured in the Core: a chain of two successful actions left the world as
+  `reserve, charge, refund, release` while the run reported `SUCCESS`. A consumer that writes a
+  Saga today cannot express the happy path, and that is a gap in the published contract, not in
+  this repository.
 
-And one thing it is not yet, which is what this repository is waiting for: the **shape of the
-verdict in the event plane**. The CLI says the Saga's fate in the run's own summary, and the
-`SagaTerminal` event carries it too, but a consumer that wants to answer "did it fail, and is
-there work for a human?" still has to correlate two events. When the Core publishes that as one
-fact, this repository's next probe will use it — and until then, a probe here would be guessing a
-contract that does not exist yet.
-
-So the door is open; what is behind it now is the **shape of the verdict in the event plane** and
-the direction of the slots, not the crash windows and not the reconciliation. Those two are
-closed: a crash no longer repeats an effect, and a lost answer can be settled by asking the
-provider instead of only by a human.
+And what this repository is waiting for is no longer the shape of the verdict — that arrived with
+`0.74.0-rc1` — but the two things above: the direction of the slots, and the confirmation of a
+Saga that succeeded. The crash windows and the reconciliation are closed: a crash no longer repeats
+an effect, and a lost answer can be settled by asking the provider instead of only by a human.
