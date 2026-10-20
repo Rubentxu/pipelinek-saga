@@ -27,9 +27,9 @@ bundle as an asset (`pipelinek-<train>.sdk.zip`); download it from the release, 
 point the build at the directory:
 
 ```bash
-gh release download v0.74.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.74.0.sdk.zip' -D /tmp/sdkdl
-unzip pipelinek-0.74.0.sdk.zip -d /tmp/sdk
-./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.74.0
+gh release download v0.75.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.75.0.sdk.zip' -D /tmp/sdkdl
+unzip pipelinek-0.75.0.sdk.zip -d /tmp/sdk
+./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.75.0
 ```
 
 The version is always explicit. A default could only be one that fails to resolve, and that
@@ -39,7 +39,7 @@ failure arrives far from the line that matters.
 
 | Milestone | What | State |
 |---|---|---|
-| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike`, `SagaEventSpike` and `SagaVerdictSpike` compile against the published SDK of `v0.74.0-rc1` |
+| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike`, `SagaEventSpike`, `SagaVerdictSpike` and `SagaLifecycleSpike` compile against the published SDK of `v0.75.0-rc1` |
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
@@ -50,13 +50,13 @@ published, and the answer it found is yes — the whole Saga contract is inside 
 
 ### What PG-0 actually proved
 
-- **Producer**: PipelineK `v0.74.0-rc1` (tag commit `cf3a465c213115b65d6e25960bcd98d471b640cf`,
-  release candidate `sha256:f74c9fb3ed8e0a73a43a036eaef0f0345a71b6aaacdcde89df84e63e6ddeaccd`).
-- **Artifact consumed**: `pipelinek-0.74.0.sdk.zip`, sha256
-  `81c1e6fd1ce3ce6e8c642dd4958510c28417a9c9459f79d83e7ccb4869d483a5`, verified against the
+- **Producer**: PipelineK `v0.75.0-rc1` (tag commit `3079b2603594ee92666929317f66224e42b308b4`,
+  release candidate `sha256:e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa`).
+- **Artifact consumed**: `pipelinek-0.75.0.sdk.zip`, sha256
+  `0055ef177d334e14b0f512b3c89adfd7d104e732c6212eef09c5bae5fb200362`, verified against the
   release's `SHA256SUMS`.
-- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.74.0` and
-  `pipeline-events:0.74.0` (which brings `pipeline-scripting-api:0.74.0` with it). Everything
+- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.75.0` and
+  `pipeline-events:0.75.0` (which brings `pipeline-scripting-api:0.75.0` with it). Everything
   else on the classpath is the Kotlin standard library. Nothing internal is reachable, because
   nothing internal is published. The second artifact is not a widening of the seam: the domain
   carries the CONTRACT and the events carry the OBSERVABLE FACTS of it, and a consumer that
@@ -92,6 +92,16 @@ published, and the answer it found is yes — the whole Saga contract is inside 
   The reading itself is proven in the producer, not here: its tests read the **real bytes** of two
   finished runs, captured from the durable store, and assert that the verdict they produce is the
   same one the product prints on stderr.
+- **The seventh probe asks the engine to CLOSE a Saga**: `SagaLifecycleSpike.kt` compiles against
+  `0.75.0` and **fails** against `0.74.0` with unresolved references to `SAGA_LIFECYCLE_CAPABILITY`,
+  `SagaLifecycle` and `SagaCompletionReport` — re-verified in this cycle.
+  It exists because until this train a Saga that had **worked** could not say so: the engine had one
+  verb to end a Saga (`compensate`), and an obligation whose forward was confirmed stayed owed for
+  ever, so a successful Saga compensated itself. Measured in the Core: a chain of two successful
+  actions left the world as `reserve, charge, refund, release` while the run reported `SUCCESS`.
+  The new port is the Saga's **lifecycle** — it EXTENDS the runtime port, so a consumer holds ONE
+  handle with both ways of ending a Saga, and the SDK stays additive: the published interface did
+  not grow an abstract method.
 
 The first milestone that changes behaviour is PG-1, and it is blocked on the Core: the
 compensation must be executed and its evidence persisted before a plugin can promise
@@ -208,6 +218,19 @@ depends on — the *contract* moves at its own pace, while the *product* around 
   verdict is read from the facts already on the plane, not from a new field.
   For a consumer this is the difference between reading two events and reading one fact.
 
+- `v0.75.0-rc1` publishes the **closing** of a Saga that succeeded. Until this train the
+  contract had one way to end a Saga, and it was the wrong one for a happy path: an obligation
+  whose forward was confirmed stayed owed for ever, so a Saga whose actions all succeeded was a
+  Saga that had to compensate itself — the world said `reserve, charge, refund, release` while the
+  run said `success`. The new port is the Saga's **lifecycle** (`SagaLifecycle`), and it EXTENDS
+  the runtime port instead of replacing it: one handle with both endings, and a published
+  interface that did not grow an abstract method. The domain gains the state that says the effect
+  is KEPT (`EFFECT_KEPT`), the pure decision of whether a Saga may be closed (`SagaDecider
+  .completion`) and the report that says which actions were kept (`SagaCompletionReport`).
+  The engine discharges the promises in ONE durable statement, so a Saga is closed for good and a
+  resumed run never finds half of it owed; and a closing the durable state cannot corroborate is
+  REFUSED, with the obligation that blocks it and the reason — not with a silent success.
+
 One thing it still does **not** bring, and that is why PG-1 is still blocked:
 
 - A slot is addressed by the plugin step key of the child, so two children of the **same** kind
@@ -215,15 +238,13 @@ One thing it still does **not** bring, and that is why PG-1 is still blocked:
   two bodies of its own kind declares two definitions. The shipped example needed six distinct
   kinds for a three-action chain, which is a property of the seam and not of the Saga — a real
   consumer should not have to borrow the core's kinds to get there.
-- And one that the Core has just discovered about **itself**: the Saga contract cannot express a
-  Saga that **succeeded**. The engine has one verb to close a Saga — `compensate` — and an
-  obligation whose forward was confirmed stays owed forever, so a Saga whose actions all succeeded
-  compensates itself. Measured in the Core: a chain of two successful actions left the world as
-  `reserve, charge, refund, release` while the run reported `SUCCESS`. A consumer that writes a
-  Saga today cannot express the happy path, and that is a gap in the published contract, not in
-  this repository.
+
+The second one is gone: `v0.75.0-rc1` publishes the **closing** of a Saga that succeeded, and with
+it the plane law that says a green run cannot have compensated. The consumer can now say which of
+the two endings it wants, and the engine decides what that means for the durable state.
 
 And what this repository is waiting for is no longer the shape of the verdict — that arrived with
-`0.74.0-rc1` — but the two things above: the direction of the slots, and the confirmation of a
-Saga that succeeded. The crash windows and the reconciliation are closed: a crash no longer repeats
-an effect, and a lost answer can be settled by asking the provider instead of only by a human.
+`0.74.0-rc1` — nor the confirmation of a Saga that succeeded, which arrived with `0.75.0-rc1`, but
+the direction of the slots. The crash windows and the reconciliation are closed: a crash no longer
+repeats an effect, and a lost answer can be settled by asking the provider instead of only by a
+human.
