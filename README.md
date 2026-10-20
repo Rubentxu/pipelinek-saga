@@ -27,9 +27,9 @@ bundle as an asset (`pipelinek-<train>.sdk.zip`); download it from the release, 
 point the build at the directory:
 
 ```bash
-gh release download v0.72.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.72.0.sdk.zip' -D /tmp/sdkdl
-unzip pipelinek-0.72.0.sdk.zip -d /tmp/sdk
-./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.72.0
+gh release download v0.73.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.73.0.sdk.zip' -D /tmp/sdkdl
+unzip pipelinek-0.73.0.sdk.zip -d /tmp/sdk
+./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.73.0
 ```
 
 The version is always explicit. A default could only be one that fails to resolve, and that
@@ -39,7 +39,7 @@ failure arrives far from the line that matters.
 
 | Milestone | What | State |
 |---|---|---|
-| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.72.0-rc1` |
+| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.73.0-rc1` |
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
@@ -50,13 +50,13 @@ published, and the answer it found is yes — the whole Saga contract is inside 
 
 ### What PG-0 actually proved
 
-- **Producer**: PipelineK `v0.72.0-rc1` (tag commit `dedf98b7feb89d2cacdf6829ef9a77c2d34601e9`,
-  release candidate `sha256:16cbd93b5b358ddf8aa42bcfea5212305a59c048bb324e2cdb75b9ebe2476378`).
-- **Artifact consumed**: `pipelinek-0.72.0.sdk.zip`, sha256
-  `2d2af27f3b461633ac6ee2641e7bc98eff4378ca41313efa010472ebf3e321ec`, verified against the
+- **Producer**: PipelineK `v0.73.0-rc1` (tag commit `43855cb751feeb9dcd4c6f4cea735c9370fe7009`,
+  release candidate `sha256:ac3ea176f83be106bca7f376fdf2a1e7e71e24b6a293d7689c601240cd0b5582`).
+- **Artifact consumed**: `pipelinek-0.73.0.sdk.zip`, sha256
+  `29a99c1b780eeb32a21a64da79838b000eb67ec321141b8be4f91a6e898b1eca`, verified against the
   release's `SHA256SUMS`.
-- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.72.0` and
-  `pipeline-events:0.72.0` (which brings `pipeline-scripting-api:0.72.0` with it). Everything
+- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.73.0` and
+  `pipeline-events:0.73.0` (which brings `pipeline-scripting-api:0.73.0` with it). Everything
   else on the classpath is the Kotlin standard library. Nothing internal is reachable, because
   nothing internal is published. The second artifact is not a widening of the seam: the domain
   carries the CONTRACT and the events carry the OBSERVABLE FACTS of it, and a consumer that
@@ -126,9 +126,9 @@ fact; the consumer only reads them.
 **demonstration** and put the publication gate under test, and none of them changes the published
 ABI: across those three, the five published artifacts carry **identical bytecode** — the only byte
 that differs is the `Implementation-Version` stamped in their manifests. `v0.72.0-rc1` is the first
-train that changes behaviour instead of demonstration. What all four share is the property a
-consumer actually depends on — the *contract* moves at its own pace, while the *product* around it
-moves fast.
+train that changes behaviour instead of demonstration, and `v0.73.0-rc1` is the first that grows
+the published contract by even one name. What all five share is the property a consumer actually
+depends on — the *contract* moves at its own pace, while the *product* around it moves fast.
 
 - `v0.69.0-rc1` ships, inside the distribution, a **complete external Saga plugin** and a scenario
   that runs it: a real process, a real SQLite, three actions, the third one failing, and the engine
@@ -167,16 +167,21 @@ moves fast.
   The proof is two scenarios that kill the process with `SIGKILL` at the exact point and resume it
   against the same store, with the world compared between the two runs.
 
-Two things it still does **not** bring, and that is why PG-1 is still blocked:
+- `v0.73.0-rc1` closes the other half of the crash story, and it does so with a **defect of its
+  own** in the middle. The Core can now RECONCILE: when a provider declares that it recognises its
+  own operation keys, the engine asks it again instead of handing the case to a human. Asking is
+  only safe if the body can recognise the question — and it could not: the invocation's
+  environment patch was projected onto the execution context only, while a `sh` process is
+  launched with the process options and nothing else, so the key never reached the body and a
+  re-dispatch could have repeated the effect. The fix projects a patch onto **both** surfaces, in
+  one place, exactly the way the script's own scopes already did. The published contract grows by
+  exactly one thing — the name of the environment variable by which a body receives the key of its
+  operation (`SagaOperationIdentity.OPERATION_KEY_ENV`) — which is additive, and nothing else
+  moves. For a consumer the shape is the same; the guarantee is stronger, because a lost answer
+  can now be settled by **asking** instead of only by a human.
 
-- The Core still does not **reconcile** — it only refuses to guess. The three crash windows
-  (`arm` before the forward effect; the remote effect before the confirmation; the remote
-  compensation before the ack) are demonstrated end to end, with a real process and a real
-  SQLite, and the resumed run stops and asks for a human whenever nobody can say what happened.
-  What is missing is the other half: asking the provider. The row keeps a derived
-  `compensation_op_id` while the body is dispatched under the canonical path identity of the
-  child, so there is no stable, collision-free identity to hand a provider and ask "did you
-  already do this?". The *slot* links the event to the journal, but it does not close that gap.
+One thing it still does **not** bring, and that is why PG-1 is still blocked:
+
 - A slot is addressed by the plugin step key of the child, so two children of the **same** kind
   collide and the seam refuses the ambiguous name instead of guessing. A Saga plugin that wants
   two bodies of its own kind declares two definitions. The shipped example needed six distinct
@@ -190,5 +195,7 @@ there work for a human?" still has to correlate two events. When the Core publis
 fact, this repository's next probe will use it — and until then, a probe here would be guessing a
 contract that does not exist yet.
 
-So the door is open; what is behind it now is the reconciliation, not the crash windows. That is
-the Core's next milestone, and this repository waits for it.
+So the door is open; what is behind it now is the **shape of the verdict in the event plane** and
+the direction of the slots, not the crash windows and not the reconciliation. Those two are
+closed: a crash no longer repeats an effect, and a lost answer can be settled by asking the
+provider instead of only by a human.
