@@ -27,9 +27,9 @@ bundle as an asset (`pipelinek-<train>.sdk.zip`); download it from the release, 
 point the build at the directory:
 
 ```bash
-gh release download v0.70.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.70.0.sdk.zip' -D /tmp/sdkdl
-unzip pipelinek-0.70.0.sdk.zip -d /tmp/sdk
-./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.70.0
+gh release download v0.71.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.71.0.sdk.zip' -D /tmp/sdkdl
+unzip pipelinek-0.71.0.sdk.zip -d /tmp/sdk
+./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.71.0
 ```
 
 The version is always explicit. A default could only be one that fails to resolve, and that
@@ -39,7 +39,7 @@ failure arrives far from the line that matters.
 
 | Milestone | What | State |
 |---|---|---|
-| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.70.0-rc1` |
+| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.71.0-rc1` |
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
@@ -50,13 +50,13 @@ published, and the answer it found is yes — the whole Saga contract is inside 
 
 ### What PG-0 actually proved
 
-- **Producer**: PipelineK `v0.70.0-rc1` (tag commit `df307273b5ea01d99ec8752c133bc6a737584f41`,
-  release candidate `sha256:1c91f2091b469b92339236c3f5ca544156290bb9dbf77bb7dbb6888c462459fb`).
-- **Artifact consumed**: `pipelinek-0.70.0.sdk.zip`, sha256
-  `6033fd36bbfaadee50b8a239180c7e9b9220772d8cfe7a2cd2c3d913800f6b59`, verified against the
+- **Producer**: PipelineK `v0.71.0-rc1` (tag commit `0301a1fd9e034a08d57409278b65f2dd783630a6`,
+  release candidate `sha256:6c7f4b32f02fc803231c64fa915f0890c3f44fb6adc1307932dafc45b25e6d30`).
+- **Artifact consumed**: `pipelinek-0.71.0.sdk.zip`, sha256
+  `e751e723adb09db6e586070a78a828151bd83c2a4504cf0d1e59574d348b37ea`, verified against the
   release's `SHA256SUMS`.
-- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.70.0` and
-  `pipeline-events:0.70.0` (which brings `pipeline-scripting-api:0.70.0` with it). Everything
+- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.71.0` and
+  `pipeline-events:0.71.0` (which brings `pipeline-scripting-api:0.71.0` with it). Everything
   else on the classpath is the Kotlin standard library. Nothing internal is reachable, because
   nothing internal is published. The second artifact is not a widening of the seam: the domain
   carries the CONTRACT and the events carry the OBSERVABLE FACTS of it, and a consumer that
@@ -122,10 +122,12 @@ does — a compensation started, a compensation finished, the Saga's terminal st
 announcements are published events. The engine still owns the state and still produces every
 fact; the consumer only reads them.
 
-`v0.69.0-rc1` and `v0.70.0-rc1` are the trains that turn that contract into a **demonstration**,
-and neither of them changes the published ABI: the five published artifacts are byte-identical
-across both. That is worth stating, because it is the property a consumer actually depends on —
-the *contract* moves at its own pace, while the *product* around it moves fast.
+`v0.69.0-rc1`, `v0.70.0-rc1` and `v0.71.0-rc1` are the trains that turn that contract into a
+**demonstration** and put the publication gate under test, and none of them changes the published
+ABI: across all three, the five published artifacts carry **identical bytecode** — the only byte
+that differs is the `Implementation-Version` stamped in their manifests. That is worth stating,
+because it is the property a consumer actually depends on — the *contract* moves at its own pace,
+while the *product* around it moves fast.
 
 - `v0.69.0-rc1` ships, inside the distribution, a **complete external Saga plugin** and a scenario
   that runs it: a real process, a real SQLite, three actions, the third one failing, and the engine
@@ -140,6 +142,16 @@ the *contract* moves at its own pace, while the *product* around it moves fast.
   that a failed call left no effect, the engine compensates **nothing** — not even what it knows —
   and the Saga ends in `NEEDS_INTERVENTION`. Compensating an older resource while a newer one is
   in doubt can destroy the state the newer compensation would have needed.
+- `v0.71.0-rc1` adds **nothing** to the published contract — the same five artifacts, class for
+  class — and repairs a hole in the **publication gate** itself. A bundled plugin whose manifest
+  did not declare an `apiRange` used to **vanish** from the compatibility check instead of
+  failing it, so the gate reported "compatible" about a plugin nobody had looked at, and the
+  candidate was published. Now the *presence* of the manifest decides whether the bytes are a
+  plugin at all, and its *content* decides what they declare: a manifest without a readable range
+  is a **conflict**, not an absence, because nothing shows that plugin admitting the host. The
+  failure sat on both ends of the seam — the host refused that plugin at admission and the
+  producer never saw it. To a consumer of the SDK this train is invisible; to whoever installs
+  the distribution it is the difference between a gate that means something and a gate that nods.
 
 Two things it still does **not** bring, and that is why PG-1 is still blocked:
 
