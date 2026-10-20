@@ -27,9 +27,9 @@ bundle as an asset (`pipelinek-<train>.sdk.zip`); download it from the release, 
 point the build at the directory:
 
 ```bash
-gh release download v0.71.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.71.0.sdk.zip' -D /tmp/sdkdl
-unzip pipelinek-0.71.0.sdk.zip -d /tmp/sdk
-./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.71.0
+gh release download v0.72.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.72.0.sdk.zip' -D /tmp/sdkdl
+unzip pipelinek-0.72.0.sdk.zip -d /tmp/sdk
+./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.72.0
 ```
 
 The version is always explicit. A default could only be one that fails to resolve, and that
@@ -39,7 +39,7 @@ failure arrives far from the line that matters.
 
 | Milestone | What | State |
 |---|---|---|
-| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.71.0-rc1` |
+| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.72.0-rc1` |
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
@@ -50,13 +50,13 @@ published, and the answer it found is yes — the whole Saga contract is inside 
 
 ### What PG-0 actually proved
 
-- **Producer**: PipelineK `v0.71.0-rc1` (tag commit `0301a1fd9e034a08d57409278b65f2dd783630a6`,
-  release candidate `sha256:6c7f4b32f02fc803231c64fa915f0890c3f44fb6adc1307932dafc45b25e6d30`).
-- **Artifact consumed**: `pipelinek-0.71.0.sdk.zip`, sha256
-  `e751e723adb09db6e586070a78a828151bd83c2a4504cf0d1e59574d348b37ea`, verified against the
+- **Producer**: PipelineK `v0.72.0-rc1` (tag commit `dedf98b7feb89d2cacdf6829ef9a77c2d34601e9`,
+  release candidate `sha256:16cbd93b5b358ddf8aa42bcfea5212305a59c048bb324e2cdb75b9ebe2476378`).
+- **Artifact consumed**: `pipelinek-0.72.0.sdk.zip`, sha256
+  `2d2af27f3b461633ac6ee2641e7bc98eff4378ca41313efa010472ebf3e321ec`, verified against the
   release's `SHA256SUMS`.
-- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.71.0` and
-  `pipeline-events:0.71.0` (which brings `pipeline-scripting-api:0.71.0` with it). Everything
+- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.72.0` and
+  `pipeline-events:0.72.0` (which brings `pipeline-scripting-api:0.72.0` with it). Everything
   else on the classpath is the Kotlin standard library. Nothing internal is reachable, because
   nothing internal is published. The second artifact is not a widening of the seam: the domain
   carries the CONTRACT and the events carry the OBSERVABLE FACTS of it, and a consumer that
@@ -124,10 +124,11 @@ fact; the consumer only reads them.
 
 `v0.69.0-rc1`, `v0.70.0-rc1` and `v0.71.0-rc1` are the trains that turn that contract into a
 **demonstration** and put the publication gate under test, and none of them changes the published
-ABI: across all three, the five published artifacts carry **identical bytecode** — the only byte
-that differs is the `Implementation-Version` stamped in their manifests. That is worth stating,
-because it is the property a consumer actually depends on — the *contract* moves at its own pace,
-while the *product* around it moves fast.
+ABI: across those three, the five published artifacts carry **identical bytecode** — the only byte
+that differs is the `Implementation-Version` stamped in their manifests. `v0.72.0-rc1` is the first
+train that changes behaviour instead of demonstration. What all four share is the property a
+consumer actually depends on — the *contract* moves at its own pace, while the *product* around it
+moves fast.
 
 - `v0.69.0-rc1` ships, inside the distribution, a **complete external Saga plugin** and a scenario
   that runs it: a real process, a real SQLite, three actions, the third one failing, and the engine
@@ -153,14 +154,29 @@ while the *product* around it moves fast.
   producer never saw it. To a consumer of the SDK this train is invisible; to whoever installs
   the distribution it is the difference between a gate that means something and a gate that nods.
 
+- `v0.72.0-rc1` changes the published **behaviour** without changing the published **shape**: of the
+  five artifacts, exactly one class changes — `CompensationLifecycle`, in `pipeline-domain` — and
+  not a single published signature moves (the ABI dump does not budge). It changes it because it
+  was wrong. Re-writing a state an obligation already held was always allowed, so a process that
+  came back after a crash could re-write "this call is on its way out" — which is not a retry, it
+  is a **second authorisation** — and the effect happened twice, with a row that looked exactly
+  like a first attempt. The states that are "on their way out" no longer accept a re-write, so a
+  resumed run finds the call already authorised, stops, and says so:
+  `NEEDS_INTERVENTION (UNKNOWN_EFFECT)` or `(COMPENSATION_UNCERTAIN)`. For a consumer the shape
+  is the same; the guarantee is stronger, because a crash can no longer turn one effect into two.
+  The proof is two scenarios that kill the process with `SIGKILL` at the exact point and resume it
+  against the same store, with the world compared between the two runs.
+
 Two things it still does **not** bring, and that is why PG-1 is still blocked:
 
-- The Core does not yet demonstrate the **crash windows**: the end-to-end loop is demonstrated, but
-  the reconciliation of the three windows (`arm` before the forward effect; the remote effect before
-  the confirmation; the remote compensation before the ack) and the re-entry after a crash are still
-  to come. Neither is the operation identity that would make the third window reconcilable: the row
-  keeps a derived `compensation_op_id` while the body is dispatched under the canonical path identity
-  of the child, and the *slot* links the event to the journal but does not close that gap.
+- The Core still does not **reconcile** — it only refuses to guess. The three crash windows
+  (`arm` before the forward effect; the remote effect before the confirmation; the remote
+  compensation before the ack) are demonstrated end to end, with a real process and a real
+  SQLite, and the resumed run stops and asks for a human whenever nobody can say what happened.
+  What is missing is the other half: asking the provider. The row keeps a derived
+  `compensation_op_id` while the body is dispatched under the canonical path identity of the
+  child, so there is no stable, collision-free identity to hand a provider and ask "did you
+  already do this?". The *slot* links the event to the journal, but it does not close that gap.
 - A slot is addressed by the plugin step key of the child, so two children of the **same** kind
   collide and the seam refuses the ambiguous name instead of guessing. A Saga plugin that wants
   two bodies of its own kind declares two definitions. The shipped example needed six distinct
@@ -174,5 +190,5 @@ there work for a human?" still has to correlate two events. When the Core publis
 fact, this repository's next probe will use it — and until then, a probe here would be guessing a
 contract that does not exist yet.
 
-So the door is open; the crash windows behind it are not built yet. That is the Core's next
-milestone, and this repository waits for it.
+So the door is open; what is behind it now is the reconciliation, not the crash windows. That is
+the Core's next milestone, and this repository waits for it.
