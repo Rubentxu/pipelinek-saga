@@ -27,9 +27,9 @@ bundle as an asset (`pipelinek-<train>.sdk.zip`); download it from the release, 
 point the build at the directory:
 
 ```bash
-gh release download v0.68.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.68.0.sdk.zip' -D /tmp/sdkdl
-unzip pipelinek-0.68.0.sdk.zip -d /tmp/sdk
-./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.68.0
+gh release download v0.70.0-rc1 -R Rubentxu/pipeline-kotlin -p 'pipelinek-0.70.0.sdk.zip' -D /tmp/sdkdl
+unzip pipelinek-0.70.0.sdk.zip -d /tmp/sdk
+./gradlew compileKotlin -PsdkRepo=/tmp/sdk -PsdkVersion=0.70.0
 ```
 
 The version is always explicit. A default could only be one that fails to resolve, and that
@@ -39,7 +39,7 @@ failure arrives far from the line that matters.
 
 | Milestone | What | State |
 |---|---|---|
-| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.68.0-rc1` |
+| PG-0 | Viability spike: does the published contract suffice for an external consumer? | **done** — `SagaContractSpike`, `SagaPlanSpike`, `SagaRuntimeSpike`, `SagaRefusalSpike` and `SagaEventSpike` compile against the published SDK of `v0.70.0-rc1` |
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
@@ -50,13 +50,13 @@ published, and the answer it found is yes — the whole Saga contract is inside 
 
 ### What PG-0 actually proved
 
-- **Producer**: PipelineK `v0.68.0-rc1` (tag commit `347faf941f5f116c46df8115a9747d7da68b396b`,
-  release candidate `sha256:43c39a23447fbc5fa1d055eaf89be5f9bc1c41555f6b3fb5a55a52d96ef630a1`).
-- **Artifact consumed**: `pipelinek-0.68.0.sdk.zip`, sha256
-  `ced40f0a7fabfa5b23d8b7efa5987e12f2469b8c5f2e43618c78fbc8ffec52a5`, verified against the
+- **Producer**: PipelineK `v0.70.0-rc1` (tag commit `df307273b5ea01d99ec8752c133bc6a737584f41`,
+  release candidate `sha256:1c91f2091b469b92339236c3f5ca544156290bb9dbf77bb7dbb6888c462459fb`).
+- **Artifact consumed**: `pipelinek-0.70.0.sdk.zip`, sha256
+  `6033fd36bbfaadee50b8a239180c7e9b9220772d8cfe7a2cd2c3d913800f6b59`, verified against the
   release's `SHA256SUMS`.
-- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.68.0` and
-  `pipeline-events:0.68.0` (which brings `pipeline-scripting-api:0.68.0` with it). Everything
+- **Resolved classpath**: two PipelineK artifacts — `pipeline-domain:0.70.0` and
+  `pipeline-events:0.70.0` (which brings `pipeline-scripting-api:0.70.0` with it). Everything
   else on the classpath is the Kotlin standard library. Nothing internal is reachable, because
   nothing internal is published. The second artifact is not a widening of the seam: the domain
   carries the CONTRACT and the events carry the OBSERVABLE FACTS of it, and a consumer that
@@ -74,13 +74,13 @@ published, and the answer it found is yes — the whole Saga contract is inside 
   **not dispatched** left the resource untouched and may be retried, while one whose outcome is
   **uncertain** may already have been applied and must not be run again. A consumer that cannot
   tell them apart either undoes a resource twice or leaves the Saga stuck forever.
-- **The fifth probe reads the event plane**: `SagaEventSpike.kt` compiles against `0.68.0` and
-  **fails** against `0.67.0` with unresolved references to `CompensationStarted`,
-  `CompensationFinished` and `SagaTerminal`. It answers the question a consumer of a FINISHED
-  run really has — which bodies ran, how they ended, and whether a human is needed — from the
-  events, without opening SQLite and without knowing anything about the engine's internals. A
-  Saga that is only observable in a private table is a Saga that is only observable by the
-  engine.
+- **The fifth probe reads the event plane**: `SagaEventSpike.kt` compiles against `0.70.0` (and
+  against `0.68.0`, where the API arrived) and **fails** against `0.67.0` with unresolved references
+  to `CompensationStarted`, `CompensationFinished` and `SagaTerminal` — re-verified in this cycle.
+  It answers the question a consumer of a FINISHED run really has — which bodies ran, how they
+  ended, and whether a human is needed — from the events, without opening SQLite and without
+  knowing anything about the engine's internals. A Saga that is only observable in a private table
+  is a Saga that is only observable by the engine.
 
 The first milestone that changes behaviour is PG-1, and it is blocked on the Core: the
 compensation must be executed and its evidence persisted before a plugin can promise
@@ -122,14 +122,45 @@ does — a compensation started, a compensation finished, the Saga's terminal st
 announcements are published events. The engine still owns the state and still produces every
 fact; the consumer only reads them.
 
+`v0.69.0-rc1` and `v0.70.0-rc1` are the trains that turn that contract into a **demonstration**,
+and neither of them changes the published ABI: the five published artifacts are byte-identical
+across both. That is worth stating, because it is the property a consumer actually depends on —
+the *contract* moves at its own pace, while the *product* around it moves fast.
+
+- `v0.69.0-rc1` ships, inside the distribution, a **complete external Saga plugin** and a scenario
+  that runs it: a real process, a real SQLite, three actions, the third one failing, and the engine
+  compensating the first two in the inverse order over real resources. The plugin reaches the
+  contract the way a plugin must — from outside, through published capabilities, with the engine
+  owning the durable state.
+- `v0.70.0-rc1` adds the other half of that experiment. The **run's verdict** now says what
+  happened to its Saga (`saga [checkout]: SETTLED` / `saga [checkout]: NEEDS_INTERVENTION
+  (UNKNOWN_EFFECT)`), because a Saga that leaves work for a human and a Saga that was fully
+  compensated used to produce the same stderr, and they call for opposite responses. The same
+  train also proves the other side with a second scenario: when the provider **cannot** promise
+  that a failed call left no effect, the engine compensates **nothing** — not even what it knows —
+  and the Saga ends in `NEEDS_INTERVENTION`. Compensating an older resource while a newer one is
+  in doubt can destroy the state the newer compensation would have needed.
+
 Two things it still does **not** bring, and that is why PG-1 is still blocked:
 
-- The Core does not yet demonstrate the loop **end to end**: the interpreter exists and is
-  exercised against a real durable store, but the demonstration with a real plugin, a real
-  process and real resources — and the reconciliation of the crash windows — is still to come.
+- The Core does not yet demonstrate the **crash windows**: the end-to-end loop is demonstrated, but
+  the reconciliation of the three windows (`arm` before the forward effect; the remote effect before
+  the confirmation; the remote compensation before the ack) and the re-entry after a crash are still
+  to come. Neither is the operation identity that would make the third window reconcilable: the row
+  keeps a derived `compensation_op_id` while the body is dispatched under the canonical path identity
+  of the child, and the *slot* links the event to the journal but does not close that gap.
 - A slot is addressed by the plugin step key of the child, so two children of the **same** kind
   collide and the seam refuses the ambiguous name instead of guessing. A Saga plugin that wants
-  two bodies of its own kind declares two definitions.
+  two bodies of its own kind declares two definitions. The shipped example needed six distinct
+  kinds for a three-action chain, which is a property of the seam and not of the Saga — a real
+  consumer should not have to borrow the core's kinds to get there.
 
-So the door is open; the demonstration behind it is not built yet. That is the Core's next
+And one thing it is not yet, which is what this repository is waiting for: the **shape of the
+verdict in the event plane**. The CLI says the Saga's fate in the run's own summary, and the
+`SagaTerminal` event carries it too, but a consumer that wants to answer "did it fail, and is
+there work for a human?" still has to correlate two events. When the Core publishes that as one
+fact, this repository's next probe will use it — and until then, a probe here would be guessing a
+contract that does not exist yet.
+
+So the door is open; the crash windows behind it are not built yet. That is the Core's next
 milestone, and this repository waits for it.
