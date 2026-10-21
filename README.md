@@ -43,6 +43,30 @@ failure arrives far from the line that matters.
 | PG-1 | First real milestone: the Saga Step | not started — needs PK-1 **and** PK-2 of the Core |
 | PG-2 | Compensation body | not started |
 
+### What the HEAD of this repository needs, and it is NOT the RC above
+
+The PG-0 row is about the seven spikes, and it is still true: they compile against
+`v0.75.0-rc1`. This repository has moved on since, and `SagaPlanFingerprintContractTest` needs a
+**newer** SDK than any release candidate. Measured on 2026-10-22, publishing each tree with
+`publishSdkForExternalPlugin` and resolving from `sdk-repo`:
+
+| This repository builds | against `759db1b37` (producer HEAD) | against `v0.75.0-rc1` = `3079b2603` |
+|---|---|---|
+| the 7 spikes (`compileKotlin`) | compiles | compiles |
+| `SagaPlanFingerprintContractTest` (`test`) | 6 of 6 green | **does not compile** — `SagaPlanFingerprint.compute` and `canonicalFormOf` are absent |
+
+`javap` on the two published `pipeline-domain` jars says why, and it is not a guess: at
+`3079b2603` the `SagaPlanFingerprint.Companion` carries only `ofOrNull`, and at `759db1b37` it
+also carries `compute`, `canonicalFormOf` and `CANONICAL_FORM_VERSION`.
+
+So the honest statement of the current state is: **there is no released artifact this repository
+builds in full.** The spikes can be checked against the RC; the contract test needs a release
+that does not exist yet. The contract test is not decorative — mutating this repository's own
+canonical form (separator `|` to `,`) turns
+`the canonical TEXT agrees, so a mismatch says WHICH field moved` and
+`the same plan produces the same fingerprint in both implementations` red, which is what makes
+the six green results mean something.
+
 PG-0 is a spike, not a milestone: it answers one question with a compiler instead of with an
 opinion. The question is whether the contract an external consumer needs is actually
 published, and the answer it found is yes — the whole Saga contract is inside the published
