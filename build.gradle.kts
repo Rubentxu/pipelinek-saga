@@ -64,6 +64,29 @@ dependencies {
     // its own version of one, would be duplicating an authority that is not its.
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-events:$sdkVersion")
+
+    // The CONTRACT TEST needs the contracts at RUN time, which `compileOnly` does not give it.
+    //
+    // The main source set keeps its discipline untouched: a plugin that bundles the contracts
+    // could run beside a second copy of them, and the two-authorities split the published
+    // seam exists to prevent would be back. A TEST is not shipped, so putting the contracts
+    // on the test classpath costs nothing and buys the one thing the plugin cannot have: the
+    // ability to CHECK the engine instead of only compiling against it.
+    testImplementation("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
+    testImplementation("dev.rubentxu.pipeline.v2:pipeline-events:$sdkVersion")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+}
+
+tasks.test {
+    useJUnitPlatform()
+    // The test is a CONTRACT test: it fails when the SDK's canonical form and this
+    // repository's implementation of it stop agreeing, and that is the whole point of
+    // running it. It must not be skipped when the suite is green elsewhere.
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
 
 kotlin {
